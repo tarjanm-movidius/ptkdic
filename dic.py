@@ -39,6 +39,7 @@ def add_w(root, word: str, trans):
 			new_node = TrieNode(char)
 			nodecnt += 1
 			node.children.append(new_node)
+			node.children.sort(key=lambda x: x.char)
 			# Point to new child
 			node = new_node
 	# Insert word into node
