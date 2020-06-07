@@ -7,10 +7,11 @@ import pickle
 from timeit import default_timer as timer
 import unichar
 
-
+dic_clean = 1
 class TrieNode(object):
 	"""
-	Trie node holding letter and optional word article
+	Trie node holding letter and optional word article. Will be pickled
+	and already huge, won't include member functions in it
 	"""
 	def __init__(self, char: str):
 		self.char = char
@@ -18,11 +19,87 @@ class TrieNode(object):
 		self.article = {}
 
 
+def insert_w(root, word: str, trans, startchar=0):
+	"""
+	Inserting a word in the trie structure
+	"""
+	global dic_clean
+	dic_clean = 0
+	node = root
+	ii = startchar
+	for char in unichar.udec(word).lower():
+		found_in_child = False
+		# Search for the character in the children of the present node
+		for child in node.children:
+			if child.char == char:
+				# Point the node to the child that contains this char
+				node = child
+				found_in_child = True
+				break
+		if not node.children:
+			break
+		# Character not found in children, adding a new child
+		if not found_in_child:
+			global nodecnt
+			new_node = TrieNode(char)
+			nodecnt += 1
+			node.children.append(new_node)
+			# Point to new child
+			node = new_node
+			break
+		ii += 1
+	ii += 1
+	# Insert word into node
+	newword = 1
+	if word in node.article:
+		# Join translations, eliminate duplicates, sort
+		trans = list(dict.fromkeys(node.article[word] + trans))
+		trans.sort()
+		newword = 0
+	if newword and ii < len(word) and unichar.udec(word).lower() != unichar.udec(next(iter(node.article))).lower():
+		# Checking through the articles of the leaf if its word(s) are longer
+		# than the trie branch, so is the new word and their search words
+		# (trie letters) don't match. Expecting a sane trie, can't have
+		# children and longer than ii words at the same time. Also, they
+		# can't differ in length or their next trie letters. Will create
+		# a new node(s) for them and move them over
+		for w in node.article:
+			while len(w) > ii:
+				new_node = TrieNode((unichar.udec(w).lower())[ii])
+				node.children.append(new_node)
+				node.children.sort(key=lambda x: x.char)
+				new_node.article = node.article
+				node.article = {}
+				if ii >= len(word):
+					# our new word ends here, we moved the longer article down
+					# to a new leaf
+					break
+				if (unichar.udec(w).lower())[ii] != (unichar.udec(word).lower())[ii]:
+					new_node = TrieNode((unichar.udec(word).lower())[ii])
+					node.children.append(new_node)
+					node.children.sort(key=lambda x: x.char)
+					node = new_node
+					break
+				node = new_node
+				ii += 1
+			if ii < len(word):
+				new_node = TrieNode((unichar.udec(word).lower())[ii])
+				node.children.append(new_node)
+				node.children.sort(key=lambda x: x.char)
+				node = new_node
+			# Moved entire article, nothing to iterate on
+			break
+	node.article[word] = trans
+	return newword
+
+
 nodecnt = 1
 def add_w(root, word: str, trans):
 	"""
 	Adding a word in the trie structure
 	"""
+	global dic_clean
+	dic_clean = 0
 	node = root
 	for char in unichar.nouc(word):
 		found_in_child = False
@@ -100,6 +177,8 @@ def optimise(node, parentbusy):
 	chain won't update as nothing will be returned to it
 	"""
 	global eliminated
+	global dic_clean
+	dic_clean = 0
 	if len(node.children) == 0:
 		# end leaf
 		return node.article
@@ -201,19 +280,11 @@ def saveDB(root, filename):
 
 def main():
 
-#	print(str(unicodedata.normalize('NFKD', sys.argv[1]).encode('ascii','ignore')))
-#	print(unichar.udec(sys.argv[1]).lower())
-#	sys.exit()
-
 	if len(sys.argv) < 3 or not sys.argv[1] in ["am", "ma", "nm", "mn", "ed", "de"]:
 		print("Error: parameter wrong or missing! Usage:", sys.argv[0], "<lang> <word_prefix>")
 		print("Where lang is: (am|ma|nm|mn|ed|de), angol/magyar/német English/Deutsch")
 		sys.exit(1)
 	if sys.argv[2] == "--import":
-		importText = 1
-	else:
-		importText = 0
-	if importText:
 		root = TrieNode('*')
 		print("Importing DB")
 		if __debug__:
@@ -236,6 +307,16 @@ def main():
 		if __debug__:
 			print("# Elapsed time", timer() - start)
 
+	if sys.argv[2] == "--insert":
+		if len(sys.argv) < 5:
+			print("Error: parameter wrong or missing! Usage:", sys.argv[0], sys.argv[1], "--insert <word> <translation [trans2 [t3 [..]]]>")
+			sys.exit(1)
+		trans = []
+		for t in sys.argv[4:]:
+			trans.append(t)
+		insert_w(root, sys.argv[3], sys.argv[4:])
+		sys.argv[2] = sys.argv[3]
+
 	if __debug__:
 		start = timer()
 	for w in find_prefix(root, unichar.udec(sys.argv[2]).lower()):
@@ -246,7 +327,7 @@ def main():
 	if __debug__:
 		print("# find_prefix() took", timer() - start)
 
-	if importText:
+	if not dic_clean:
 		if __debug__:
 			print("Saving DB")
 			start = timer()
