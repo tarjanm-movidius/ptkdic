@@ -7,7 +7,9 @@ import pickle
 from timeit import default_timer as timer
 import unichar
 
+nodecnt = 1
 dic_clean = 1
+
 class TrieNode(object):
 	"""
 	Trie node holding letter and optional word article. Will be pickled
@@ -23,6 +25,7 @@ def insert_w(root, word: str, trans, startchar=0):
 	"""
 	Inserting a word in the trie structure
 	"""
+	global nodecnt
 	global dic_clean
 	dic_clean = 0
 	node = root
@@ -40,7 +43,6 @@ def insert_w(root, word: str, trans, startchar=0):
 			break
 		# Character not found in children, adding a new child
 		if not found_in_child:
-			global nodecnt
 			new_node = TrieNode(char)
 			nodecnt += 1
 			node.children.append(new_node)
@@ -62,10 +64,11 @@ def insert_w(root, word: str, trans, startchar=0):
 		# (trie letters) don't match. Expecting a sane trie, can't have
 		# children and longer than ii words at the same time. Also, they
 		# can't differ in length or their next trie letters. Will create
-		# a new node(s) for them and move them over
+		# new node(s) for them and move them over
 		for w in node.article:
 			while len(w) > ii:
 				new_node = TrieNode((unichar.udec(w).lower())[ii])
+				nodecnt += 1
 				node.children.append(new_node)
 				node.children.sort(key=lambda x: x.char)
 				new_node.article = node.article
@@ -76,6 +79,7 @@ def insert_w(root, word: str, trans, startchar=0):
 					break
 				if (unichar.udec(w).lower())[ii] != (unichar.udec(word).lower())[ii]:
 					new_node = TrieNode((unichar.udec(word).lower())[ii])
+					nodecnt += 1
 					node.children.append(new_node)
 					node.children.sort(key=lambda x: x.char)
 					node = new_node
@@ -84,6 +88,7 @@ def insert_w(root, word: str, trans, startchar=0):
 				ii += 1
 			if ii < len(word):
 				new_node = TrieNode((unichar.udec(word).lower())[ii])
+				nodecnt += 1
 				node.children.append(new_node)
 				node.children.sort(key=lambda x: x.char)
 				node = new_node
@@ -93,7 +98,6 @@ def insert_w(root, word: str, trans, startchar=0):
 	return newword
 
 
-nodecnt = 1
 def add_w(root, word: str, trans):
 	"""
 	Adding a word in the trie structure
@@ -147,6 +151,10 @@ def find_prefix(root, prefix: str):
 				# We found the char in the child, moving on to next letter
 				char_not_found = False
 				node = child
+#				print(node.char.upper(), "has [", end='')
+#				for child in node.children:
+#					print(child.char+',', end='')
+#				print("]", node.article)
 				break
 		if char_not_found and node.children:
 			# Return nothing if there are other characters
@@ -199,6 +207,52 @@ def optimise(node, parentbusy):
 		for child in node.children:
 			optimise(child, 1)
 		return {}
+
+
+def delete_w(root, word: str, trans = "*"):
+	"""
+	Deleting a word or translation from the trie structure
+	"""
+	global eliminated
+	global dic_clean
+	node = root
+	lastbusy = root
+	# If the root node has no children, then return nothing
+	ii = len(word)
+	for char in unichar.udec(word).lower():
+		ii -= 1
+		if ii and (len(node.children) > 1 or node.article):
+			lastbusy = node
+			lastchar = char
+		char_not_found = True
+		# Search through all the children of the present node
+		for child in node.children:
+			if child.char == char:
+				# We found the char in the child, moving on to next letter
+				char_not_found = False
+				node = child
+				break
+		if char_not_found:
+			return 0
+	# We found the word, deleting the translation or the whole word
+	retval = 0
+	if word in node.article:
+		if trans == "*":
+			node.article.pop(word)
+			retval = 1
+		else:
+			if len(node.article[word]) > 1:
+				node.article[word].remove(trans)
+			else:
+				node.article.pop(word)
+				retval = 1
+		if node.article == {} and node.children == []:
+			# Empty leaf, delete up to last busy node
+			for child in node.children:
+				if child.char == lastchar:
+					node.children.remove(child)
+					break
+	return retval
 
 
 def listWords(node):
